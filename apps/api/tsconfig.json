@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@saas/db": ["../../packages/db/src"]
+    },
+    "typeRoots": [
+      "./node_modules/@types",
+      "./src/types"
+    ]
+  }
+}
+
+// Note: For production, later we'll use workspace package exports, but this is fine for development.

@@ -1,0 +1,24 @@
+{
+  "name": "@saas/worker",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/worker.ts",
+  "scripts": {
+    "dev": "tsx watch src/worker.ts",
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "bullmq": "^5.78.0",
+    "ioredis": "^5.11.1",
+    "mongoose": "^9.6.3",
+    "@saas/agents": "*",
+    "@saas/queue": "*"
+  }
+}
