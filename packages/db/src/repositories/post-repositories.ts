@@ -25,6 +25,13 @@ class PostRepository extends TenantRepository<any> {
     });
   }
 
+  async findByStatus(
+    workspaceId: string,
+    status: "draft" | "scheduled" | "published"
+  ) {
+    return this.model.find({ workspaceId, status });
+  }
+
    async publish(
     postId: string,
     workspaceId: string

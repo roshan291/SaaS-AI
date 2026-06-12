@@ -1,107 +1,79 @@
 import { Router } from "express";
 import { aiQueue } from "@saas/queue";
-import { AuthRequest, GenerateContentSchema } from "@saas/shared";
-import { JobService } from "../../src/services/job-service";
 import {
-  authMiddleware
-} from "../../src/auth/auth-middleware";
+  AUDIT_ACTIONS,
+  GenerateContentSchema,
+  ROLES,
+  toPublicJob,
+  type AuthRequest
+} from "@saas/shared";
+
+import { JobService } from "../../src/services/job-service";
+import { authMiddleware } from "../../src/auth/auth-middleware";
+import { allowRoles } from "../../src/auth/role-middleware";
+import { asyncHandler } from "../../src/lib/async-handler";
+import { respond, Errors } from "../../src/lib/respond";
+import { emitAudit } from "../../src/lib/audit";
 
 const router = Router();
 const jobService = new JobService();
 
+const GENERATOR_ROLES = [ROLES.OWNER, ROLES.ADMIN, ROLES.EDITOR];
 
 router.post(
   "/generate",
   authMiddleware,
-  async (
-    req: AuthRequest,
-    res
-  ) => {
+  allowRoles(GENERATOR_ROLES),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const data = GenerateContentSchema.parse(req.body);
 
+    const dbJob = await jobService.createJob({
+      workspaceId: req.user!.workspaceId,
+      type: "content",
+      payload: data
+    });
 
-    const data =
-      GenerateContentSchema.parse(
-        req.body
-      );
+    const queueJob = await aiQueue.add("generate-post", {
+      dbJobId: dbJob._id.toString(),
+      workspaceId: req.user!.workspaceId,
+      topic: data.topic
+    });
 
-    const dbJob =
-      await jobService.createJob({
-        workspaceId:
-          req.user!.workspaceId,
+    const updatedJob = await jobService.updateJob(dbJob._id, {
+      queueJobId: queueJob.id
+    });
 
-        type:
-          "content",
+    emitAudit({
+      req,
+      action: AUDIT_ACTIONS.AI_CONTENT_JOB_QUEUED,
+      entity: "job",
+      entityId: dbJob._id.toString(),
+      metadata: { topic: data.topic }
+    });
 
-        payload:
-          data
-      });
-
-    const queueJob =
-      await aiQueue.add(
-        "generate-post",
-        {
-          dbJobId:
-            dbJob._id.toString(),
-
-          workspaceId:
-            req.user!.workspaceId,
-
-          topic:
-            data.topic
-        }
-      );
-
-    const updatedJob =
-      await jobService.updateJob(
-        dbJob._id,
-        {
-          queueJobId:
-            queueJob.id
-        }
-      );
-
-    res.status(202).json(updatedJob);
-  }
+    respond(res, toPublicJob(updatedJob), 202);
+  })
 );
 
 router.get(
   "/job/:id",
   authMiddleware,
-  async (req: AuthRequest, res) => {
-
-    const jobId = String(req.params.id);
-
-    const job =
-      await jobService.getJobById(
-        jobId,
-        req.user!.workspaceId
-      );
+  asyncHandler(async (req: AuthRequest, res) => {
+    const job = await jobService.getJobById(
+      String(req.params.id),
+      req.user!.workspaceId
+    );
 
     if (!job) {
-      return res.status(404).json({
-        message: "Job not found"
-      });
+      throw Errors.notFound("Job");
     }
-    return res.json(job);
-    // const state = await job.getState();
 
-    // return res.json({
-    //   id: job.id,
-    //   state,
-    //   result: state === "completed" ? job.returnvalue : null,
-    //   failedReason: state === "failed" ? job.failedReason : undefined,
-    //   attemptsMade: job.attemptsMade
-    // });
-  }
+    respond(res, toPublicJob(job));
+  })
 );
 
-router.get(
-  "/test",
-  (req, res) => {
-    res.json({
-      message: "AI Route Working"
-    });
-  }
-);
+router.get("/test", (_req, res) => {
+  respond(res, { message: "AI Route Working" });
+});
 
 export default router;

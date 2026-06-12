@@ -1,0 +1,47 @@
+# Local-development orchestration. Builds API + worker and starts them
+# alongside a Mongo and Redis container. Use `docker compose up --build`.
+#
+# In production the API and worker should run as separate services in your
+# orchestrator (ECS, Kubernetes, etc.), pointing at managed Mongo + Redis.
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports: ["27017:27017"]
+    volumes:
+      - mongo-data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports: ["6379:6379"]
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file: apps/api/.env
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/saas
+      REDIS_URL: redis://redis:6379
+    depends_on: [mongo, redis]
+    ports: ["4000:4000"]
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    env_file: apps/worker/.env
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/saas
+      REDIS_URL: redis://redis:6379
+    depends_on: [mongo, redis]
+
+volumes:
+  mongo-data:
+  redis-data:

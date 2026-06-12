@@ -1,67 +1,79 @@
 import { Router } from "express";
 
-import { CreateUserSchema } from "@saas/shared";
+import {
+    AUDIT_ACTIONS,
+    CreateUserSchema,
+    ROLES,
+    type AuthRequest
+} from "@saas/shared";
+
 import { UserService } from "../services/user-service";
 import { authMiddleware } from "../auth/auth-middleware";
-import { AuthRequest } from "@saas/shared";
+import { allowRoles } from "../auth/role-middleware";
+import { asyncHandler } from "../lib/async-handler";
+import { respond, Errors } from "../lib/respond";
+import { emitAudit } from "../lib/audit";
 
 const router = Router();
-
 const userService = new UserService();
 
-router.post("/", async (req, res) => {
-    try {
+// Inviting a teammate: only the workspace OWNER or an ADMIN can do this.
+// `workspaceId` is server-derived from the caller's JWT — body cannot set it.
+// `role` is restricted by the Zod schema to non-owner roles.
+router.post(
+    "/",
+    authMiddleware,
+    allowRoles([ROLES.OWNER, ROLES.ADMIN]),
+    asyncHandler(async (req: AuthRequest, res) => {
+        const data = CreateUserSchema.parse(req.body);
 
-        const data =
-            CreateUserSchema.parse(req.body);
-
-        const user =
-            await userService.createUser(data);
-
-        res.status(201).json(user);
-
-    } catch (error: any) {
-
-        console.error(error);
-
-        res.status(400).json({
-            message: error.message
+        const user = await userService.createUser({
+            workspaceId: req.user!.workspaceId,
+            firstName: data.firstName,
+            lastName: data.lastName,
+            email: data.email,
+            password: data.password,
+            role: data.role
         });
-    }
-});
 
-router.get(
-  "/:id",
-  authMiddleware,
-  async (req: AuthRequest, res) => {
+        emitAudit({
+            req,
+            action: AUDIT_ACTIONS.USER_CREATED,
+            entity: "user",
+            entityId: user?.id,
+            metadata: { role: user?.role }
+        });
 
-    const user =
-      await userService.getUserById(
-        Array.isArray(req.params.id) ? req.params.id[0] : req.params.id,
-        req.user!.workspaceId
-      );
-
-    if (!user) {
-      return res.status(404).json({
-        message: "User not found"
-      });
-    }
-
-    res.json(user);
-  }
+        respond(res, user, 201);
+    })
 );
+
 router.get(
-  "/",
-  authMiddleware,
-  async (req: AuthRequest, res) => {
+    "/:id",
+    authMiddleware,
+    asyncHandler(async (req: AuthRequest, res) => {
+        const id = String(req.params.id);
+        const user = await userService.getUserById(
+            id,
+            req.user!.workspaceId
+        );
 
-    const users =
-      await userService.getUsers(
-        req.user!.workspaceId
-      );
+        if (!user) {
+            throw Errors.notFound("User");
+        }
 
-    res.json(users);
-  }
+        respond(res, user);
+    })
+);
+
+router.get(
+    "/",
+    authMiddleware,
+    allowRoles([ROLES.OWNER, ROLES.ADMIN, ROLES.EDITOR]),
+    asyncHandler(async (req: AuthRequest, res) => {
+        const users = await userService.getUsers(req.user!.workspaceId);
+        respond(res, users);
+    })
 );
 
 export default router;

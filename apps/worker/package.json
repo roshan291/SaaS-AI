@@ -5,20 +5,25 @@
   "main": "src/worker.ts",
   "scripts": {
     "dev": "tsx watch src/worker.ts",
-    "build": "tsc"
+    "start": "tsx src/worker.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3"
+    "typescript": "^5.6.3"
   },
   "dependencies": {
     "bullmq": "^5.78.0",
+    "dotenv": "^17.4.2",
     "ioredis": "^5.11.1",
     "mongoose": "^9.6.3",
     "@saas/agents": "*",
-    "@saas/queue": "*"
+    "@saas/db": "*",
+    "@saas/queue": "*",
+    "@saas/shared": "*"
   }
 }

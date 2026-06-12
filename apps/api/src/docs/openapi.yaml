@@ -1,0 +1,597 @@
+openapi: 3.0.3
+info:
+  title: Social Media SaaS API
+  version: 1.0.0
+  description: |
+    Multi-tenant social media automation platform.
+
+    ## Quick Start
+    1. Call **POST /test/seed** → returns a brand-new workspace + owner token (no setup needed).
+    2. Click the **Authorize** button at the top and paste the `token` from the response.
+    3. All other endpoints (with the lock icon) are now callable directly via **Try it out**.
+
+    Every example body below contains dummy data that satisfies validation; just press Send.
+
+    ## Response envelope
+    Success: `{ "success": true, "data": ..., "requestId": "uuid" }`<br/>
+    Error:   `{ "success": false, "code": "ERROR_CODE", "message": "...", "requestId": "uuid" }`
+
+servers:
+  - url: http://localhost:4000/api/v1
+    description: Local dev
+
+tags:
+  - name: Test
+    description: One-shot helpers to bootstrap a session for quick testing
+  - name: Health
+  - name: Auth
+  - name: Users
+  - name: Workspaces
+  - name: Posts
+  - name: AI
+  - name: Hashtags
+  - name: Images
+  - name: Videos
+  - name: Jobs
+  - name: Audit
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    SuccessEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        data: { type: object }
+        requestId: { type: string, format: uuid }
+
+    ErrorEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        code:    { type: string, example: VALIDATION_ERROR }
+        message: { type: string }
+        requestId: { type: string, format: uuid }
+
+    User:
+      type: object
+      properties:
+        id:          { type: string, example: "6a2bc9594e6ceecdf3249ea3" }
+        firstName:   { type: string }
+        lastName:    { type: string }
+        email:       { type: string, format: email }
+        role:        { type: string, enum: [owner, admin, editor, viewer] }
+        workspaceId: { type: string }
+        isActive:    { type: boolean }
+        lastLoginAt: { type: string, format: date-time, nullable: true }
+        createdAt:   { type: string, format: date-time }
+        updatedAt:   { type: string, format: date-time }
+
+    Workspace:
+      type: object
+      properties:
+        _id:        { type: string }
+        name:       { type: string }
+        slug:       { type: string }
+        plan:       { type: string, enum: [free, pro, enterprise] }
+        ownerId:    { type: string }
+        isActive:   { type: boolean }
+        settings:
+          type: object
+          properties:
+            timezone: { type: string }
+            locale:   { type: string }
+
+    Post:
+      type: object
+      properties:
+        _id:         { type: string }
+        title:       { type: string }
+        content:     { type: string }
+        status:      { type: string, enum: [draft, scheduled, published] }
+        workspaceId: { type: string }
+        createdAt:   { type: string, format: date-time }
+        updatedAt:   { type: string, format: date-time }
+
+    Job:
+      type: object
+      properties:
+        id:          { type: string }
+        type:        { type: string, enum: [content, hashtags, image, video] }
+        status:      { type: string, enum: [queued, processing, completed, failed] }
+        workspaceId: { type: string }
+        payload:     { type: object }
+        result:      { type: object, nullable: true }
+        error:       { type: string, nullable: true }
+        attempts:    { type: integer }
+        createdAt:   { type: string, format: date-time }
+        updatedAt:   { type: string, format: date-time }
+
+    AuditLog:
+      type: object
+      properties:
+        _id:         { type: string }
+        action:      { type: string, example: user.created }
+        entity:      { type: string }
+        entityId:    { type: string }
+        workspaceId: { type: string }
+        userId:      { type: string, nullable: true }
+        metadata:    { type: object }
+        ip:          { type: string }
+        userAgent:   { type: string }
+        createdAt:   { type: string, format: date-time }
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Forbidden:
+      description: Authenticated but role not allowed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    NotFound:
+      description: Resource does not exist (or belongs to a different tenant)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    ValidationError:
+      description: Body failed Zod validation
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+paths:
+  # ────────────────────────────── TEST ──────────────────────────────
+  /test/seed:
+    post:
+      tags: [Test]
+      summary: One-shot seed — creates fresh workspace + owner, returns JWT
+      description: |
+        Use this **once** when you open the docs. It returns a `token` you can paste into the
+        Authorize dialog above. Slug and email are auto-randomized so it never collides.
+      responses:
+        '201':
+          description: Seeded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          token: { type: string }
+                          user:  { $ref: '#/components/schemas/User' }
+                          workspace: { $ref: '#/components/schemas/Workspace' }
+                          hint: { type: string, example: "Click Authorize and paste this token." }
+
+  /test/sample-payloads:
+    get:
+      tags: [Test]
+      summary: Returns ready-to-paste dummy bodies for every write endpoint
+      responses:
+        '200':
+          description: Ok
+
+  # ────────────────────────────── HEALTH ─────────────────────────────
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      responses:
+        '200': { description: Process alive }
+  /readyz:
+    get:
+      tags: [Health]
+      summary: Readiness probe (Mongo + Redis)
+      responses:
+        '200': { description: Ready }
+        '503': { description: Degraded }
+
+  # ─────────────────────────────── AUTH ──────────────────────────────
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Bootstrap a new workspace + first owner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstName, lastName, email, password, workspace]
+              properties:
+                firstName: { type: string, minLength: 2, maxLength: 60 }
+                lastName:  { type: string, minLength: 2, maxLength: 60 }
+                email:     { type: string, format: email }
+                password:
+                  type: string
+                  minLength: 12
+                  description: ≥12 chars; must include lowercase, uppercase, digit, symbol
+                workspace:
+                  type: object
+                  required: [name, slug]
+                  properties:
+                    name: { type: string, minLength: 3, maxLength: 80 }
+                    slug:
+                      type: string
+                      pattern: '^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$'
+            example:
+              firstName: Acme
+              lastName: Owner
+              email: owner-demo@acme.test
+              password: StrongP@ssw0rd!
+              workspace:
+                name: Acme Inc
+                slug: acme-demo-001
+      responses:
+        '201': { description: Created }
+        '409': { description: Slug or email already in use }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login → JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:    { type: string, format: email }
+                password: { type: string }
+            example:
+              email: owner-demo@acme.test
+              password: StrongP@ssw0rd!
+      responses:
+        '200': { description: Ok }
+        '401': { description: Invalid credentials }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current authenticated user
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Ok }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ─────────────────────────────── USERS ─────────────────────────────
+  /users:
+    get:
+      tags: [Users]
+      summary: List users in caller's workspace
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Ok }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Users]
+      summary: Invite a teammate (owner/admin only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstName, lastName, email, password]
+              properties:
+                firstName: { type: string }
+                lastName:  { type: string }
+                email:     { type: string, format: email }
+                password:  { type: string, minLength: 12 }
+                role:      { type: string, enum: [admin, editor, viewer], default: viewer }
+            example:
+              firstName: Eve
+              lastName: Editor
+              email: eve-demo@acme.test
+              password: AnotherP@ss123!
+              role: editor
+      responses:
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Email already in use }
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Get a user by id (within caller's workspace)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Ok }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ────────────────────────── WORKSPACES ─────────────────────────────
+  /workspaces:
+    get:
+      tags: [Workspaces]
+      summary: List workspaces caller owns
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Ok }
+    post:
+      tags: [Workspaces]
+      summary: Create a workspace (owner only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: { type: string }
+                slug: { type: string }
+                settings:
+                  type: object
+                  properties:
+                    timezone: { type: string }
+                    locale:   { type: string }
+            example:
+              name: Side Project
+              slug: side-project-001
+              settings: { timezone: UTC, locale: en-US }
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Slug already in use }
+
+  # ─────────────────────────────── POSTS ─────────────────────────────
+  /posts:
+    get:
+      tags: [Posts]
+      summary: List posts in caller's workspace
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [draft, scheduled, published] }
+      responses:
+        '200': { description: Ok }
+    post:
+      tags: [Posts]
+      summary: Create a post
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, content]
+              properties:
+                title:   { type: string, minLength: 3, maxLength: 200 }
+                content: { type: string, minLength: 1, maxLength: 20000 }
+                status:  { type: string, enum: [draft, scheduled, published], default: draft }
+            example:
+              title: Hello world
+              content: This is the body of my first post.
+              status: draft
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /posts/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Posts]
+      summary: Get one post
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Ok }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Posts]
+      summary: Update a post
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:   { type: string }
+                content: { type: string }
+                status:  { type: string, enum: [draft, scheduled, published] }
+            example:
+              title: Hello world v2
+      responses:
+        '200': { description: Ok }
+    delete:
+      tags: [Posts]
+      summary: Delete a post (owner/admin only)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Ok }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /posts/{id}/publish:
+    post:
+      tags: [Posts]
+      summary: Publish a post
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Published }
+
+  # ────────────────────────── AI / Async Jobs ────────────────────────
+  /ai/generate:
+    post:
+      tags: [AI]
+      summary: Queue an AI content-generation job
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [topic]
+              properties:
+                topic: { type: string, minLength: 3 }
+            example: { topic: Benefits of remote work }
+      responses:
+        '202': { description: Accepted (job queued) }
+
+  /ai/job/{id}:
+    get:
+      tags: [AI]
+      summary: Poll a content job by id
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Ok }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /hashtags/generate:
+    post:
+      tags: [Hashtags]
+      summary: Queue an AI hashtag-generation job
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [topic]
+              properties:
+                topic: { type: string, minLength: 3 }
+            example: { topic: Remote work culture }
+      responses:
+        '202': { description: Accepted }
+
+  /images/generate:
+    post:
+      tags: [Images]
+      summary: Queue an AI image-generation job
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [topic]
+              properties:
+                topic: { type: string, minLength: 3 }
+            example: { topic: A serene mountain landscape at sunrise }
+      responses:
+        '202': { description: Accepted }
+
+  /videos/generate:
+    post:
+      tags: [Videos]
+      summary: Queue an AI video-generation job
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [topic]
+              properties:
+                topic: { type: string, minLength: 3 }
+            example: { topic: Time-lapse of a city at night }
+      responses:
+        '202': { description: Accepted }
+
+  # ─────────────────────────────── JOBS ──────────────────────────────
+  /jobs:
+    get:
+      tags: [Jobs]
+      summary: List all jobs in caller's workspace
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Ok }
+
+  /jobs/stats:
+    get:
+      tags: [Jobs]
+      summary: Aggregate job counts by status / type
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Ok }
+
+  /jobs/{id}:
+    get:
+      tags: [Jobs]
+      summary: Get a job
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Ok }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /jobs/{id}/retry:
+    post:
+      tags: [Jobs]
+      summary: Re-queue a failed job
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Re-queued }
+
+  # ─────────────────────────────── AUDIT ─────────────────────────────
+  /audit-logs:
+    get:
+      tags: [Audit]
+      summary: List audit logs (owner/admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50, maximum: 200 }
+        - in: query
+          name: before
+          schema: { type: string, format: date-time }
+        - in: query
+          name: action
+          schema: { type: string, example: user.login.success }
+      responses:
+        '200': { description: Ok }
+        '403': { $ref: '#/components/responses/Forbidden' }

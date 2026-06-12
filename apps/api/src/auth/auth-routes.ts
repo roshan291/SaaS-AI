@@ -1,124 +1,101 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 
-import { AuthService }
-from "./auth-service";
+import {
+  AUDIT_ACTIONS,
+  LoginSchema,
+  RegisterOwnerSchema,
+  type AuthRequest
+} from "@saas/shared";
+
+import { AuthService } from "./auth-service";
 import { authMiddleware } from "./auth-middleware";
-import { allowRoles } from "./role-middleware";
-import { ROLES } from "@saas/shared";
+import { asyncHandler } from "../lib/async-handler";
+import { respond } from "../lib/respond";
+import { emitAudit } from "../lib/audit";
 
 const router = Router();
+const authService = new AuthService();
 
-const authService =
-  new AuthService();
+// Defense-in-depth: per-IP rate limit on the login + register endpoints. The
+// global rate-limiter in server.ts is more permissive; this one is strict.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: Number(process.env.AUTH_RATE_LIMIT ?? 20),
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: {
+    success: false,
+    code: "RATE_LIMITED",
+    message: "Too many auth attempts, please try again later"
+  }
+});
 
 router.post(
   "/login",
-  async (req, res) => {
+  authLimiter,
+  asyncHandler(async (req, res) => {
+    const data = LoginSchema.parse(req.body);
 
     try {
+      const result = await authService.login(data.email, data.password);
 
-      const result =
-        await authService.login(
-          req.body.email,
-          req.body.password
-        );
-
-      res.json(result);
-
-    } catch (error: any) {
-
-      res.status(401).json({
-        message:
-          error.message
+      emitAudit({
+        req,
+        action: AUDIT_ACTIONS.LOGIN_SUCCESS,
+        entity: "user",
+        entityId: result.user?.id,
+        workspaceId: result.user?.workspaceId,
+        userId: result.user?.id,
+        metadata: { email: data.email }
       });
+
+      respond(res, result);
+    } catch (err) {
+      emitAudit({
+        req,
+        action: AUDIT_ACTIONS.LOGIN_FAILURE,
+        // We do not yet know the workspace; the audit emitter will skip if
+        // there is no workspace context. That is acceptable because the
+        // application-level logger still records the attempt.
+        metadata: { email: data.email }
+      });
+      throw err;
     }
-  }
+  })
+);
+
+router.post(
+  "/register",
+  authLimiter,
+  asyncHandler(async (req, res) => {
+    const data = RegisterOwnerSchema.parse(req.body);
+    const result = await authService.registerOwner(data);
+
+    emitAudit({
+      req,
+      workspaceId: result.user?.workspaceId,
+      userId: result.user?.id,
+      action: AUDIT_ACTIONS.WORKSPACE_CREATED,
+      entity: "workspace",
+      entityId: result.user?.workspaceId,
+      metadata: { via: "register-owner" }
+    });
+
+    respond(res, result, 201);
+  })
 );
 
 router.get(
   "/me",
   authMiddleware,
-  async (req: any, res) => {
-
-    const result =
-      await authService.me(
-        req.user.userId,
-        req.user.workspaceId
-      );
-
-    res.json(result);
-  }
+  asyncHandler(async (req: AuthRequest, res) => {
+    const user = await authService.me(
+      req.user!.userId,
+      req.user!.workspaceId
+    );
+    respond(res, user);
+  })
 );
-
-//Owner Only
-router.get(
-  "/admin-dashboard",
-
-  authMiddleware,
-
-  allowRoles([
-    ROLES.OWNER
-  ]),
-
-  async (req, res) => {
-
-    res.json({
-      message:
-        "Owner Access"
-    });
-  }
-);
-
-//Owner + Admin
-router.get(
-  "/manage-users",
-
-  authMiddleware,
-
-  allowRoles([
-    ROLES.OWNER,
-    ROLES.ADMIN
-  ]),
-
-  async (req, res) => {
-
-    res.json({
-      message:
-        "Manage Users"
-    });
-  }
-);
-
-//Owner + Admin + Editor
-router.post(
-  "/posts",
-
-  authMiddleware,
-
-  
-  allowRoles([
-    ROLES.OWNER,
-    ROLES.ADMIN,
-    ROLES.EDITOR
-  ]),
-
-  async (req, res) => {
-
-    res.json({
-      message:
-        "Create Post"
-    });
-  }
-);
-
-//Everyone
-
-router.get( "/profile", authMiddleware,
-  async (req, res) => {
-    res.json((req as any).user);
-  }
-);
-
-
 
 export default router;

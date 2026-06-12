@@ -1,124 +1,69 @@
-import {
-    JobRepository
-} from "@saas/db";
+import { JobRepository } from "@saas/db";
+import { Errors } from "../lib/respond";
+
+interface CreateJobInput {
+    workspaceId: string;
+    type: string;
+    payload: unknown;
+}
 
 export class JobService {
 
-    async createJob(
-        data: any
-    ) {
-
+    async createJob(data: CreateJobInput) {
         return JobRepository.create({
-            workspaceId:
-                data.workspaceId,
-
-            type:
-                data.type,
-
-            payload:
-                data.payload,
-
-            status:
-                "queued"
+            workspaceId: data.workspaceId,
+            type: data.type,
+            payload: data.payload,
+            status: "queued"
         });
     }
 
-    async getJobs(
-        workspaceId: string
-    ) {
-
-        return JobRepository.findByWorkspace(
-            workspaceId
-        );
+    async getJobs(workspaceId: string) {
+        return JobRepository.findByWorkspace(workspaceId);
     }
 
-    async updateJob(
-        id: string,
-        data: any
-    ) {
-
-        return JobRepository.update(
-            id,
-            data
-        );
+    async updateJob(id: string, data: Record<string, unknown>) {
+        return JobRepository.update(id, data);
     }
-    async getJobById(
-        id: string,
-        workspaceId: string
-    ) {
 
-        return JobRepository.findByIdAndWorkspace(
-            id,
-            workspaceId
-        );
+    async getJobById(id: string, workspaceId: string) {
+        return JobRepository.findByIdAndWorkspace(id, workspaceId);
     }
-    async getStats(
-        workspaceId: string
-    ) {
 
-        const stats =
-            await JobRepository.getStats(
-                workspaceId
-            );
-
-        const result = {
-            queued: 0,
-            processing: 0,
-            completed: 0,
-            failed: 0,
-            total: 0
-        };
-
-        stats.forEach(
-            (item: any) => {
-
-                result[
-                    item._id as keyof typeof result
-                ] = item.count;
-
-                result.total += item.count;
-            }
-        );
-
-        return result;
+    async getStats(workspaceId: string) {
+        // Repository returns the shaped object already
+        // (`{ queued, processing, completed, failed, total }`).
+        return JobRepository.getStats(workspaceId);
     }
-    async retryJob(
-        id: string,
-        workspaceId: string
-    ) {
 
-        const job =
-            await JobRepository.findByIdAndWorkspace(
-                id,
-                workspaceId
-            );
+    async retryJob(id: string, workspaceId: string) {
+        const job = await JobRepository.findByIdAndWorkspace(id, workspaceId);
 
         if (!job) {
-            throw new Error(
-                "Job not found"
-            );
+            throw Errors.notFound("Job");
         }
 
         if (job.status === "completed") {
-            throw new Error(
-                "Completed jobs cannot be retried"
+            throw Errors.conflict(
+                "Completed jobs cannot be retried",
+                "JOB_ALREADY_COMPLETED"
             );
         }
 
         if (job.status === "processing") {
-            throw new Error(
-                "Job is already processing"
+            throw Errors.conflict(
+                "Job is already processing",
+                "JOB_ALREADY_PROCESSING"
             );
         }
 
         if (job.status !== "failed") {
-            throw new Error(
-                "Only failed jobs can be retried"
+            throw Errors.conflict(
+                "Only failed jobs can be retried",
+                "JOB_NOT_RETRYABLE"
             );
         }
 
-        return JobRepository.resetForRetry(
-            id
-        );
+        return JobRepository.resetForRetry(id);
     }
 }

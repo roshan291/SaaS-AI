@@ -14,6 +14,10 @@ class WorkspaceRepository extends BaseRepository<any> {
     });
   }
 
+  async findByOwner(ownerId: string) {
+    return this.model.find({ ownerId });
+  }
+
   async getWorkspaces() {
 
     return this.findAll();

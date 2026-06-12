@@ -1,15 +1,31 @@
 {
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
     "paths": {
-      "@saas/db": ["../../packages/db/src"]
+      "@saas/db": ["../../packages/db/src/index.ts"],
+      "@saas/queue": ["../../packages/queue/src/index.ts"],
+      "@saas/shared": ["../../packages/shared/src/index.ts"],
+      "@saas/agents": ["../../packages/agents/src/index.ts"]
     },
     "typeRoots": [
       "./node_modules/@types",
-      "./src/types"
+      "../../node_modules/@types"
     ]
-  }
+  },
+  "include": [
+    "src/**/*",
+    "v1/**/*",
+    "../../packages/shared/src/types/express.d.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
 }
-
-// Note: For production, later we'll use workspace package exports, but this is fine for development.

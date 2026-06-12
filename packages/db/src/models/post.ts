@@ -16,12 +16,19 @@ const PostSchema = new Schema(
 
     status: {
       type: String,
-      enum: ["draft", "scheduled", "published"]
+      enum: ["draft", "scheduled", "published"],
+      default: "draft"
     }
   },
   {
     timestamps: true
   }
 );
+
+// Drafts list view + status filters within a workspace.
+PostSchema.index({ workspaceId: 1, status: 1, createdAt: -1 });
+
+PostSchema.set("toJSON", { versionKey: false });
+PostSchema.set("toObject", { versionKey: false });
 
 export const PostModel = model("Post", PostSchema);

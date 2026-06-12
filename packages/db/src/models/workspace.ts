@@ -23,7 +23,8 @@ const WorkspaceSchema = new Schema(
 
     ownerId: {
       type: String,
-      required: true
+      required: true,
+      index: true
     },
 
     isActive: {
@@ -57,5 +58,8 @@ const WorkspaceSchema = new Schema(
   }
 
 );
+
+WorkspaceSchema.set("toJSON", { versionKey: false });
+WorkspaceSchema.set("toObject", { versionKey: false });
 
 export const WorkspaceModel = model("Workspace", WorkspaceSchema);

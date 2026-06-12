@@ -1,82 +1,58 @@
 import { Router } from "express";
-
+import { hashtagQueue } from "@saas/queue";
 import {
-  authMiddleware
-} from "../auth/auth-middleware";
-
-import {
-  hashtagQueue
-} from "@saas/queue";
-
-import {
-  JobService
-} from "../services/job-service";
-
-import {
+  AUDIT_ACTIONS,
   GenerateHashtagSchema,
-  AuthRequest
+  ROLES,
+  toPublicJob,
+  type AuthRequest
 } from "@saas/shared";
 
-const router = Router();
+import { authMiddleware } from "../auth/auth-middleware";
+import { allowRoles } from "../auth/role-middleware";
+import { JobService } from "../services/job-service";
+import { asyncHandler } from "../lib/async-handler";
+import { respond } from "../lib/respond";
+import { emitAudit } from "../lib/audit";
 
-const jobService =
-  new JobService();
+const router = Router();
+const jobService = new JobService();
+
+const GENERATOR_ROLES = [ROLES.OWNER, ROLES.ADMIN, ROLES.EDITOR];
 
 router.post(
   "/generate",
-
   authMiddleware,
+  allowRoles(GENERATOR_ROLES),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const data = GenerateHashtagSchema.parse(req.body);
 
-  async (
-    req: AuthRequest,
-    res
-  ) => {
-
-    const data =
-      GenerateHashtagSchema.parse(
-        req.body
-      );
-
-    const dbJob =
-      await jobService.createJob({
-        workspaceId:
-          req.user!.workspaceId,
-
-        type:
-          "hashtags",
-
-        payload:
-          data
-      });
-
-    const queueJob =
-      await hashtagQueue.add(
-        "generate-hashtags",
-        {
-          dbJobId:
-            dbJob._id.toString(),
-
-          topic:
-            data.topic
-        }
-      );
-
-    await jobService.updateJob(
-      dbJob._id,
-      {
-        queueJobId:
-          queueJob.id
-      }
-    );
-
-    res.status(202).json({
-      jobId:
-        dbJob._id,
-
-      status:
-        "queued"
+    const dbJob = await jobService.createJob({
+      workspaceId: req.user!.workspaceId,
+      type: "hashtags",
+      payload: data
     });
-  }
+
+    const queueJob = await hashtagQueue.add("generate-hashtags", {
+      dbJobId: dbJob._id.toString(),
+      workspaceId: req.user!.workspaceId,
+      topic: data.topic
+    });
+
+    const updatedJob = await jobService.updateJob(dbJob._id, {
+      queueJobId: queueJob.id
+    });
+
+    emitAudit({
+      req,
+      action: AUDIT_ACTIONS.AI_HASHTAG_JOB_QUEUED,
+      entity: "job",
+      entityId: dbJob._id.toString(),
+      metadata: { topic: data.topic }
+    });
+
+    respond(res, toPublicJob(updatedJob), 202);
+  })
 );
 
 export default router;

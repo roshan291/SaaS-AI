@@ -1,43 +1,35 @@
-import { Response, NextFunction }from "express";
-import { AuthRequest } from "@saas/shared";
+import type { NextFunction, Response } from "express";
+import type { AuthRequest } from "@saas/shared";
 
-import {
-  verifyToken
-} from "./jwt";
+import { verifyToken } from "./jwt";
+import { Errors } from "../lib/respond";
 
 export function authMiddleware(
   req: AuthRequest,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ) {
+  const authHeader = req.headers.authorization;
 
-  const authHeader =
-    req.headers.authorization;
-
-  if (!authHeader) {
-
-    return res.status(401).json({
-      message: "Unauthorized"
-    });
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return next(Errors.unauthorized("Missing Bearer token"));
   }
 
-  const token =
-    authHeader.replace(
-      "Bearer ",
-      ""
-    );
+  const token = authHeader.slice("Bearer ".length).trim();
+
+  if (!token) {
+    return next(Errors.unauthorized("Empty token"));
+  }
 
   try {
-
     const payload = verifyToken(token);
-    req.user = payload as AuthRequest["user"];
-
+    req.user = {
+      userId: payload.userId,
+      workspaceId: payload.workspaceId,
+      role: payload.role
+    };
     next();
-
   } catch {
-
-    return res.status(401).json({
-      message: "Invalid token"
-    });
+    return next(Errors.unauthorized("Invalid or expired token"));
   }
 }
