@@ -31,7 +31,6 @@ tags:
   - name: AI
   - name: Hashtags
   - name: Images
-  - name: Videos
   - name: Jobs
   - name: Audit
 
@@ -102,7 +101,7 @@ components:
       type: object
       properties:
         id:          { type: string }
-        type:        { type: string, enum: [content, hashtags, image, video] }
+        type:        { type: string, enum: [content, hashtags, image] }
         status:      { type: string, enum: [queued, processing, completed, failed] }
         workspaceId: { type: string }
         payload:     { type: object }
@@ -111,6 +110,20 @@ components:
         attempts:    { type: integer }
         createdAt:   { type: string, format: date-time }
         updatedAt:   { type: string, format: date-time }
+
+    ImageJobResult:
+      type: object
+      description: |
+        Shape of `data.result` once an image job finishes. The refined `prompt`
+        is what was actually sent to the image model; `imageUrl` is the
+        Cloudinary CDN URL the client should render. `storageKey` is
+        Cloudinary's `public_id`, which can be used for later deletes or
+        transformations.
+      properties:
+        prompt:     { type: string }
+        imageUrl:   { type: string, format: uri, example: "https://res.cloudinary.com/<cloud>/image/upload/social-saas/images/2026-06-12/abc.png" }
+        mimeType:   { type: string, example: image/png }
+        storageKey: { type: string, example: social-saas/images/2026-06-12/abc }
 
     AuditLog:
       type: object
@@ -125,6 +138,21 @@ components:
         ip:          { type: string }
         userAgent:   { type: string }
         createdAt:   { type: string, format: date-time }
+
+  parameters:
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: false
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9._:-]{1,200}$'
+        example: client-uuid-7f3b2e
+      description: |
+        Optional. If supplied on an AI generation POST, the server returns the
+        existing job for the same `(workspaceId, key)` pair instead of
+        creating a duplicate. Useful for safely retrying network failures.
+        Charset: `A-Za-z0-9._:-`, max length 200.
 
   responses:
     Unauthorized:
@@ -144,6 +172,14 @@ components:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     ValidationError:
       description: Body failed Zod validation
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    AIRateLimited:
+      description: |
+        Per-workspace AI generation quota exceeded. Default cap is 30 jobs
+        per hour; tunable via `AI_RATE_LIMIT_MAX` / `AI_RATE_LIMIT_WINDOW_MS`.
+        Error code: `AI_RATE_LIMITED`.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -451,6 +487,8 @@ paths:
       tags: [AI]
       summary: Queue an AI content-generation job
       security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -459,10 +497,12 @@ paths:
               type: object
               required: [topic]
               properties:
-                topic: { type: string, minLength: 3 }
+                topic: { type: string, minLength: 3, maxLength: 500 }
             example: { topic: Benefits of remote work }
       responses:
         '202': { description: Accepted (job queued) }
+        '200': { description: Existing job returned for Idempotency-Key }
+        '429': { $ref: '#/components/responses/AIRateLimited' }
 
   /ai/job/{id}:
     get:
@@ -483,6 +523,8 @@ paths:
       tags: [Hashtags]
       summary: Queue an AI hashtag-generation job
       security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -491,16 +533,27 @@ paths:
               type: object
               required: [topic]
               properties:
-                topic: { type: string, minLength: 3 }
+                topic: { type: string, minLength: 3, maxLength: 500 }
             example: { topic: Remote work culture }
       responses:
         '202': { description: Accepted }
+        '200': { description: Existing job returned for Idempotency-Key }
+        '429': { $ref: '#/components/responses/AIRateLimited' }
 
   /images/generate:
     post:
       tags: [Images]
-      summary: Queue an AI image-generation job
+      summary: Queue an AI image-generation job (end-to-end pipeline)
+      description: |
+        Two-step pipeline:
+          1. Text model refines the topic into a detailed image prompt.
+          2. Image model generates PNG bytes from that prompt.
+        Bytes are uploaded to Cloudinary; the returned `imageUrl` is a CDN
+        URL clients can render directly. The completed job's `data.result`
+        matches `ImageJobResult`.
       security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -509,28 +562,23 @@ paths:
               type: object
               required: [topic]
               properties:
-                topic: { type: string, minLength: 3 }
+                topic: { type: string, minLength: 3, maxLength: 500 }
             example: { topic: A serene mountain landscape at sunrise }
       responses:
-        '202': { description: Accepted }
-
-  /videos/generate:
-    post:
-      tags: [Videos]
-      summary: Queue an AI video-generation job
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [topic]
-              properties:
-                topic: { type: string, minLength: 3 }
-            example: { topic: Time-lapse of a city at night }
-      responses:
-        '202': { description: Accepted }
+        '202':
+          description: |
+            Accepted; poll `GET /jobs/{id}` until status is `completed`.
+            On completion, `data.result` conforms to `ImageJobResult`.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Job' }
+        '200': { description: Existing job returned for Idempotency-Key }
+        '429': { $ref: '#/components/responses/AIRateLimited' }
 
   # ─────────────────────────────── JOBS ──────────────────────────────
   /jobs:

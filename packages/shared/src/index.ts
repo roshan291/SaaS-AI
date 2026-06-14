@@ -8,6 +8,5 @@ export * from "./types/ai.schema";
 export * from "./types/protected-request";
 export * from "./schemas/hashtag.schema";
 export * from "./schemas/image.schema";
-export * from "./schemas/video.schema";
 export * from "./dto/job.dto";
 export * from "./dto/user.dto";

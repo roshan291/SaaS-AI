@@ -7,7 +7,8 @@
     "dev": "tsx watch src/worker.ts",
     "start": "tsx src/worker.ts",
     "build": "tsc --noEmit",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no tests yet for @saas/worker' && exit 0"
   },
   "keywords": [],
   "author": "",
@@ -17,13 +18,16 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "@saas/agents": "*",
+    "@saas/db": "*",
+    "@saas/queue": "*",
+    "@saas/shared": "*",
+    "@saas/storage": "*",
     "bullmq": "^5.78.0",
     "dotenv": "^17.4.2",
     "ioredis": "^5.11.1",
     "mongoose": "^9.6.3",
-    "@saas/agents": "*",
-    "@saas/db": "*",
-    "@saas/queue": "*",
-    "@saas/shared": "*"
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0"
   }
 }

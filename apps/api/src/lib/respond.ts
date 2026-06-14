@@ -1,17 +1,37 @@
 import type { Response } from "express";
 
 // Standard success envelope. All routes should send via these helpers so the
-// shape is uniform: `{ success: true, data, requestId? }`.
+// shape is uniform: `{ success: true, data, requestId?, message? }`.
+// `message` is optional and intended for human-readable hints (e.g.
+// "Returning existing job for idempotency key"); machine logic should rely
+// on `data` and HTTP status.
 export function respond<T>(
   res: Response,
   data: T,
-  status: number = 200
+  status: number = 200,
+  message?: string
 ): Response {
-  return res.status(status).json({
+  // `req.id` can be string | number depending on which middleware set it
+  // (our request-id middleware uses a uuid string; pino-http may also set
+  // a numeric id). Coerce so the response body always exposes a string.
+  const rawId = res.req.id as unknown;
+  const requestId =
+    rawId == null ? undefined : String(rawId);
+
+  const body: {
+    success: true;
+    data: T;
+    requestId: string | undefined;
+    message?: string;
+  } = {
     success: true,
     data,
-    requestId: res.req.id
-  });
+    requestId
+  };
+
+  if (message) body.message = message;
+
+  return res.status(status).json(body);
 }
 
 // Standard error envelope. The global error handler emits the same shape.

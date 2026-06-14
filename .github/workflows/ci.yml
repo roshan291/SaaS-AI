@@ -26,13 +26,22 @@ jobs:
       - name: Typecheck (all workspaces)
         run: npx turbo run typecheck
 
-      - name: Build (all workspaces)
+      - name: Test (all workspaces)
         env:
           # Stub envs so any import-time validation in @saas/queue / jwt
-          # does not blow up the build.
+          # does not blow up unit tests that don't actually hit the DB.
           REDIS_URL: redis://localhost:6379
           MONGODB_URI: mongodb://localhost:27017/test
-          JWT_SECRET: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ91234454354608980!@#$%^&*)(&^@^#&#)dsafjdhfksdjasdfasfeuoirwrer"
+          JWT_SECRET: test-only-jwt-secret-do-not-use-in-production-1234567890abcdefghij
+          CLOUDINARY_URL: cloudinary://test:test@test
+        run: npx turbo run test
+
+      - name: Build (all workspaces)
+        env:
+          REDIS_URL: redis://localhost:6379
+          MONGODB_URI: mongodb://localhost:27017/test
+          JWT_SECRET: test-only-jwt-secret-do-not-use-in-production-1234567890abcdefghij
+          CLOUDINARY_URL: cloudinary://test:test@test
         run: npx turbo run build
 
   audit:

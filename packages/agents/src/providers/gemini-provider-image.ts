@@ -1,45 +1,8 @@
-import {
-  GoogleGenAI
-} from "@google/genai";
-
-import {
-  AIProvider
-} from "./ai-provider";
-
-export class GeminiProviderImage
-  implements AIProvider {
-
-  private ai: GoogleGenAI;
-
-  constructor() {
-
-    this.ai =
-      new GoogleGenAI({
-        apiKey:
-          process.env.GEMINI_API_KEY
-      });
-  }
-
-  async generate(
-    prompt: string
-  ): Promise<string> {
-
-    const response =
-      await this.ai.models.generateContent({
-        model:
-          "gemini-3.1-flash-image",
-
-        contents:
-          prompt
-      });
-
-      const imageData =
-  response.candidates?.[0]
-    ?.content?.parts?.find(
-      p => p.inlineData
-    )?.inlineData?.data;
-    return (
-      imageData || ""
-    );
-  }
-}
+// Deprecated shim. The previous implementation pointed at an image-generation
+// model that returned raw binary bytes; the calling agent then tried to
+// JSON.parse those bytes, which always failed. The image agent now uses the
+// regular text-based GeminiProvider to produce a refined prompt; this file is
+// kept only to avoid breaking any historic imports.
+//
+// TODO: remove once we confirm no external code imports `GeminiProviderImage`.
+export { GeminiProvider as GeminiProviderImage } from "./gemini-provider";

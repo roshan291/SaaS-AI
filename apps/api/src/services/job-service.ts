@@ -5,17 +5,36 @@ interface CreateJobInput {
     workspaceId: string;
     type: string;
     payload: unknown;
+    // Optional caller-supplied key. Sparse compound index on
+    // (workspaceId, idempotencyKey) enforces uniqueness when present.
+    idempotencyKey?: string;
 }
 
 export class JobService {
 
     async createJob(data: CreateJobInput) {
-        return JobRepository.create({
+        const doc: Record<string, unknown> = {
             workspaceId: data.workspaceId,
             type: data.type,
             payload: data.payload,
             status: "queued"
-        });
+        };
+
+        if (data.idempotencyKey) {
+            doc.idempotencyKey = data.idempotencyKey;
+        }
+
+        return JobRepository.create(doc);
+    }
+
+    async findByIdempotency(
+        workspaceId: string,
+        idempotencyKey: string
+    ) {
+        return JobRepository.findByIdempotency(
+            workspaceId,
+            idempotencyKey
+        );
     }
 
     async getJobs(workspaceId: string) {

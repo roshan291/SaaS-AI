@@ -4,13 +4,14 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo 'no tests yet for @saas/agents' && exit 0"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@google/genai": "^2.8.0",
+    "@saas/storage": "*",
     "openai": "^6.42.0"
   }
 }

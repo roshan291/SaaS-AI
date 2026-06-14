@@ -7,13 +7,12 @@ import {
   type AuthRequest
 } from "@saas/shared";
 
-import { aiQueue } from "@saas/queue";
-
 import { JobService } from "../src/services/job-service";
 import { authMiddleware } from "../src/auth/auth-middleware";
 import { allowRoles } from "../src/auth/role-middleware";
 import { asyncHandler } from "../src/lib/async-handler";
 import { respond, Errors } from "../src/lib/respond";
+import { JOB_TYPE_QUEUE_MAP, isJobType } from "../src/lib/queue-map";
 
 const router = Router();
 const jobService = new JobService();
@@ -64,9 +63,20 @@ router.post(
 
     const job = await jobService.retryJob(jobId, req.user!.workspaceId);
 
-    // `retryJob` already reset the DB row to status="queued"; now re-enqueue
-    // a new BullMQ job so the worker actually picks it up.
-    const queueJob = await aiQueue.add("generate-post", {
+    // Route the retry to the queue matching the *original* job type. Before
+    // this fix every retry was incorrectly sent to the content queue, so a
+    // failed hashtag/image job would be retried by the wrong agent.
+    const jobType = (job as { type: unknown }).type;
+    if (!isJobType(jobType)) {
+      throw Errors.validation(
+        `Cannot retry job with unknown type "${String(jobType)}"`,
+        { type: jobType }
+      );
+    }
+
+    const { queue, jobName } = JOB_TYPE_QUEUE_MAP[jobType];
+
+    const queueJob = await queue.add(jobName, {
       dbJobId: job._id.toString(),
       workspaceId: job.workspaceId,
       topic: (job.payload as { topic?: string })?.topic

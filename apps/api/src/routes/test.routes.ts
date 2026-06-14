@@ -95,9 +95,6 @@ router.get(
       },
       images: {
         generate: { topic: "A serene mountain landscape at sunrise" }
-      },
-      videos: {
-        generate: { topic: "Time-lapse of a city at night" }
       }
     });
   })

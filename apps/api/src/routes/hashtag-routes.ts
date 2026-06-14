@@ -14,6 +14,9 @@ import { JobService } from "../services/job-service";
 import { asyncHandler } from "../lib/async-handler";
 import { respond } from "../lib/respond";
 import { emitAudit } from "../lib/audit";
+import { aiGenerationLimiter } from "../lib/ai-rate-limit";
+import { extractIdempotencyKey } from "../lib/idempotency";
+import { aiJobsQueuedTotal } from "../lib/metrics";
 
 const router = Router();
 const jobService = new JobService();
@@ -23,14 +26,32 @@ const GENERATOR_ROLES = [ROLES.OWNER, ROLES.ADMIN, ROLES.EDITOR];
 router.post(
   "/generate",
   authMiddleware,
+  aiGenerationLimiter,
   allowRoles(GENERATOR_ROLES),
   asyncHandler(async (req: AuthRequest, res) => {
     const data = GenerateHashtagSchema.parse(req.body);
+    const idempotencyKey = extractIdempotencyKey(req);
+
+    if (idempotencyKey) {
+      const existing = await jobService.findByIdempotency(
+        req.user!.workspaceId,
+        idempotencyKey
+      );
+      if (existing) {
+        return respond(
+          res,
+          toPublicJob(existing),
+          200,
+          "Returning existing job for idempotency key"
+        );
+      }
+    }
 
     const dbJob = await jobService.createJob({
       workspaceId: req.user!.workspaceId,
       type: "hashtags",
-      payload: data
+      payload: data,
+      idempotencyKey
     });
 
     const queueJob = await hashtagQueue.add("generate-hashtags", {
@@ -50,6 +71,8 @@ router.post(
       entityId: dbJob._id.toString(),
       metadata: { topic: data.topic }
     });
+
+    aiJobsQueuedTotal.inc({ type: "hashtags" });
 
     respond(res, toPublicJob(updatedJob), 202);
   })

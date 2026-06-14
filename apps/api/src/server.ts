@@ -18,14 +18,15 @@ import aiGenerateRoutes from "../v1/ai/generate";
 import jobRoutes from "../v1/job";
 import hashtagRoutes from "./routes/hashtag-routes";
 import aiImageGenerateRoutes from "./routes/image-routes";
-import videoRoutes from "./routes/video-routes";
 import auditLogRoutes from "./routes/audit-log.routes";
 import healthRoutes from "./routes/health.routes";
+import metricsRoutes from "./routes/metrics.routes";
 import testRoutes from "./routes/test.routes";
 
 import { mountSwagger } from "./docs/swagger";
 import { errorHandler } from "./middlewares/error-handler";
 import { requestId } from "./middlewares/request-id";
+import { metricsMiddleware } from "./middlewares/metrics-middleware";
 import { logger } from "./lib/logger";
 import { respondError } from "./lib/respond";
 
@@ -42,6 +43,11 @@ app.set("trust proxy", 1);
 
 // 1. Correlate every request with a stable id (incoming or generated)
 app.use(requestId);
+
+// 1b. Prometheus metrics — record duration + status for every request.
+// Mounted before logging so 4xx/5xx still produce metrics even if the
+// logger errors out.
+app.use(metricsMiddleware);
 
 // 2. Structured logging with request id + redaction (lib/logger sets redact)
 app.use(
@@ -121,6 +127,9 @@ app.get("/", (_req, res) => {
 // Health probes are unauthenticated and mounted under /api/v1 for consistency
 app.use("/api/v1", healthRoutes);
 
+// Prometheus metrics. Auth handled inside the route based on env config.
+app.use("/api/v1", metricsRoutes);
+
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/posts", postRoutes);
 app.use("/api/v1/auth", authRoutes);
@@ -129,7 +138,6 @@ app.use("/api/v1/ai", aiGenerateRoutes);
 app.use("/api/v1/jobs", jobRoutes);
 app.use("/api/v1/hashtags", hashtagRoutes);
 app.use("/api/v1/images", aiImageGenerateRoutes);
-app.use("/api/v1/videos", videoRoutes);
 app.use("/api/v1/audit-logs", auditLogRoutes);
 app.use("/api/v1/test", testRoutes);
 

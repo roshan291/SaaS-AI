@@ -4,25 +4,38 @@ import {
   redisConfig,
   AI_CONTENT_QUEUE_NAME,
   HASHTAG_QUEUE_NAME,
-  IMAGE_QUEUE_NAME,
-  VIDEO_QUEUE_NAME
+  IMAGE_QUEUE_NAME
 } from "@saas/queue";
 
 import {
   ContentAgent,
   HashtagAgent,
-  ImageAgent,
-  VideoAgent
+  ImageAgent
 } from "@saas/agents";
 
 import { JobRepository } from "@saas/db";
+import { logger } from "./logger";
 
 const concurrency = Number(process.env.WORKER_CONCURRENCY ?? 5);
+
+// Gemini free-tier limits text generation to 5 requests / minute on
+// `gemini-2.5-flash`, which the content/hashtag/image agents all share.
+// Without a per-worker rate limiter, BullMQ would re-deliver a failed job
+// within ~100ms and immediately get another 429. The `limiter` option below
+// caps each queue's *start rate* so failed jobs get a real cooldown before
+// the next attempt. Tune via env if you upgrade to a paid Gemini plan.
+//
+//   ratePerWindow   — max jobs started per `rateWindowMs`
+//   rateWindowMs    — sliding window, in ms
+const ratePerWindow = Number(process.env.WORKER_RATE_LIMIT_MAX ?? 4);
+const rateWindowMs = Number(
+  process.env.WORKER_RATE_LIMIT_WINDOW_MS ?? 60_000
+);
+const limiter = { max: ratePerWindow, duration: rateWindowMs };
 
 const contentAgent = new ContentAgent();
 const hashtagAgent = new HashtagAgent();
 const imageAgent = new ImageAgent();
-const videoAgent = new VideoAgent();
 
 // Wrap an agent call with consistent DB-status transitions so every queue
 // emits the same lifecycle: queued -> processing -> completed | failed.
@@ -39,9 +52,13 @@ function makeProcessor(
       throw new Error("Job is missing dbJobId");
     }
 
-    console.log(
-      `▶️  Processing ${job.queueName} job ${job.id} (db=${dbJobId})`
-    );
+    const log = logger.child({
+      queue: job.queueName,
+      bullJobId: job.id,
+      dbJobId
+    });
+
+    log.info("Job processing");
 
     await JobRepository.update(dbJobId, {
       status: "processing",
@@ -57,6 +74,7 @@ function makeProcessor(
         completedAt: new Date()
       });
 
+      log.info("Job completed");
       return result;
     } catch (error: unknown) {
       const message =
@@ -74,6 +92,21 @@ function makeProcessor(
           error: message,
           completedAt: new Date()
         });
+        log.error(
+          {
+            err: error,
+            attemptsMade: job.attemptsMade + 1
+          },
+          "Job failed (final attempt)"
+        );
+      } else {
+        log.warn(
+          {
+            err: error,
+            attemptsMade: job.attemptsMade + 1
+          },
+          "Job attempt failed; will retry"
+        );
       }
 
       throw error;
@@ -85,38 +118,36 @@ const workers: Worker[] = [
   new Worker(
     AI_CONTENT_QUEUE_NAME,
     makeProcessor((topic) => contentAgent.generatePost(topic)),
-    { connection: redisConfig, concurrency }
+    { connection: redisConfig, concurrency, limiter }
   ),
 
   new Worker(
     HASHTAG_QUEUE_NAME,
     makeProcessor((topic) => hashtagAgent.generateHashtags(topic)),
-    { connection: redisConfig, concurrency }
+    { connection: redisConfig, concurrency, limiter }
   ),
 
   new Worker(
     IMAGE_QUEUE_NAME,
     makeProcessor((topic) => imageAgent.generateImagePrompt(topic)),
-    { connection: redisConfig, concurrency }
-  ),
-
-  new Worker(
-    VIDEO_QUEUE_NAME,
-    makeProcessor((topic) => videoAgent.generateVideoScript(topic)),
-    { connection: redisConfig, concurrency }
+    { connection: redisConfig, concurrency, limiter }
   )
 ];
 
 for (const worker of workers) {
   worker.on("failed", (job, err) => {
-    console.error(
-      `❌ Job ${job?.id} on ${worker.name} failed:`,
-      err?.message
+    logger.error(
+      {
+        queue: worker.name,
+        bullJobId: job?.id,
+        err: err?.message
+      },
+      "BullMQ job failed"
     );
   });
 
   worker.on("error", (err) => {
-    console.error(`🔥 Worker ${worker.name} error:`, err);
+    logger.error({ queue: worker.name, err }, "Worker error");
   });
 }
 
@@ -133,7 +164,7 @@ const STALLED_TIMEOUT_MS = Number(
 
 const stalledInterval = setInterval(() => {
   JobRepository.markStalled(STALLED_TIMEOUT_MS).catch((err) => {
-    console.error("Stalled-job sweep failed:", err);
+    logger.error({ err }, "Stalled-job sweep failed");
   });
 }, 60_000);
 
@@ -141,10 +172,10 @@ const stalledInterval = setInterval(() => {
 stalledInterval.unref();
 
 export async function shutdownWorkers() {
-  console.log("🛑 Shutting down workers...");
+  logger.info("Shutting down workers...");
   clearInterval(stalledInterval);
   await Promise.allSettled(workers.map((w) => w.close()));
-  console.log("✅ Workers closed");
+  logger.info("Workers closed");
 }
 
 export { workers };

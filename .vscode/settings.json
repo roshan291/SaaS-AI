@@ -1,3 +1,24 @@
 {
-    "postman.settings.dotenv-detection-notification-visibility": false
+    "postman.settings.dotenv-detection-notification-visibility": false,
+    "files.watcherExclude": {
+        "**/node_modules/**": true,
+        "**/dist/**": true,
+        "**/.turbo/**": true
+    },
+    "files.exclude": {
+        "**/node_modules": true,
+        "**/.turbo": true
+    },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/dist": true,
+        "**/.turbo": true,
+        "**/package-lock.json": true
+    },
+    "json.schemaDownload.enable": true,
+    "typescript.tsserver.watchOptions": {
+        "excludeDirectories": ["**/node_modules", "**/dist", "**/.turbo"]
+    },
+    "typescript.preferences.includePackageJsonAutoImports": "on",
+    "typescript.tsdk": "node_modules/typescript/lib"
 }

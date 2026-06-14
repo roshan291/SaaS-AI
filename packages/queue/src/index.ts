@@ -8,4 +8,3 @@ export { defaultJobOptions } from "./queues/queue-options";
 export { aiQueue, AI_CONTENT_QUEUE_NAME } from "./queues/ai.queue";
 export { hashtagQueue, HASHTAG_QUEUE_NAME } from "./queues/hashtag.queue";
 export { imageQueue, IMAGE_QUEUE_NAME } from "./queues/image.queue";
-export { videoQueue, VIDEO_QUEUE_NAME } from "./queues/video.queue";

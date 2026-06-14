@@ -53,6 +53,16 @@ class JobRepository
             workspaceId
         });
     }
+
+    async findByIdempotency(
+        workspaceId: string,
+        idempotencyKey: string
+    ) {
+        return this.model.findOne({
+            workspaceId,
+            idempotencyKey
+        });
+    }
     // Returns counts shaped for the /jobs/stats endpoint:
     // `{ queued, processing, completed, failed, total }`.
     async getStats(

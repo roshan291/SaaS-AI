@@ -385,24 +385,6 @@
               "pm.test('202 Accepted', () => pm.response.to.have.status(202));"
             ]}
           }]
-        },
-        {
-          "name": "POST /videos/generate",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{ownerToken}}" },
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "url": { "raw": "{{baseUrl}}/videos/generate", "host": ["{{baseUrl}}"], "path": ["videos", "generate"] },
-            "body": { "mode": "raw", "raw": "{ \"topic\": \"Time-lapse of a city at night\" }" }
-          },
-          "event": [{
-            "listen": "test",
-            "script": { "type": "text/javascript", "exec": [
-              "pm.test('202 Accepted', () => pm.response.to.have.status(202));"
-            ]}
-          }]
         }
       ]
     },

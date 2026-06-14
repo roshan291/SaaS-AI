@@ -2,6 +2,7 @@ import { Router } from "express";
 import mongoose from "mongoose";
 import IORedis from "ioredis";
 import { redisConfig } from "@saas/queue";
+import { getStorage } from "@saas/storage";
 
 const router = Router();
 
@@ -32,7 +33,8 @@ function getRedisProbe() {
 router.get("/readyz", async (_req, res) => {
   const checks: Record<string, "ok" | "fail" | "unknown"> = {
     mongo: "unknown",
-    redis: "unknown"
+    redis: "unknown",
+    storage: "unknown"
   };
 
   // Mongo: readyState 1 = connected.
@@ -47,6 +49,15 @@ router.get("/readyz", async (_req, res) => {
     checks.redis = pong === "PONG" ? "ok" : "fail";
   } catch {
     checks.redis = "fail";
+  }
+
+  // Storage (Cloudinary). We hit the Admin API which is rate-limited but
+  // not metered like uploads, so probing every few seconds is safe.
+  try {
+    const ok = await getStorage().ping();
+    checks.storage = ok ? "ok" : "fail";
+  } catch {
+    checks.storage = "fail";
   }
 
   const allOk = Object.values(checks).every((s) => s === "ok");
