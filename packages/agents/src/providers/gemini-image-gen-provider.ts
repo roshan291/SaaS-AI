@@ -30,7 +30,7 @@ export class GeminiImageGenProvider {
         });
         this.model =
             process.env.GEMINI_IMAGE_MODEL ??
-            "gemini-2.5-flash-image-preview";
+            "gemini-2.5-flash-image";
     }
 
     async generateImage(prompt: string): Promise<GeneratedImage> {
@@ -58,7 +58,8 @@ export class GeminiImageGenProvider {
                 `Image model did not return an image: ${reason}`
             );
         }
-
+        debugger;
+        console.log("Gemini image response inline data: for Roshan", inline, Buffer.from(inline.data, "base64"));
         return {
             bytes: Buffer.from(inline.data, "base64"),
             mimeType: inline.mimeType

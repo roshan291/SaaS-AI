@@ -6,6 +6,15 @@ import {
   AIProvider
 } from "./ai-provider";
 
+export interface GenerateOptions {
+  /**
+   * When true, ask Gemini to return application/json directly. Callers that
+   * parse the response as JSON should set this to avoid Gemini wrapping the
+   * payload in prose / code fences.
+   */
+  json?: boolean;
+}
+
 export class GeminiProvider
   implements AIProvider {
 
@@ -21,7 +30,8 @@ export class GeminiProvider
   }
 
   async generate(
-    prompt: string
+    prompt: string,
+    options: GenerateOptions = {}
   ): Promise<string> {
 
     const response =
@@ -30,9 +40,17 @@ export class GeminiProvider
           "gemini-2.5-flash",
 
         contents:
-          prompt
-      });
+          prompt,
 
+        // Force structured JSON output when the caller asks for it.
+        // This eliminates the "model added prose around the JSON" failure
+        // mode that breaks downstream JSON.parse() calls.
+        ...(options.json
+          ? { config: { responseMimeType: "application/json" } }
+          : {})
+      });
+    console.log("Gemini response: for Roshan", response);
+    //  debugger;
     return (
       response.text || ""
     );

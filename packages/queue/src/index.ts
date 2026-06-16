@@ -8,3 +8,8 @@ export { defaultJobOptions } from "./queues/queue-options";
 export { aiQueue, AI_CONTENT_QUEUE_NAME } from "./queues/ai.queue";
 export { hashtagQueue, HASHTAG_QUEUE_NAME } from "./queues/hashtag.queue";
 export { imageQueue, IMAGE_QUEUE_NAME } from "./queues/image.queue";
+export {
+  publishQueue,
+  PUBLISH_QUEUE_NAME,
+  type PublishJobPayload
+} from "./queues/publish.queue";

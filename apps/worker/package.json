@@ -20,6 +20,7 @@
   "dependencies": {
     "@saas/agents": "*",
     "@saas/db": "*",
+    "@saas/integrations": "*",
     "@saas/queue": "*",
     "@saas/shared": "*",
     "@saas/storage": "*",

@@ -1,0 +1,14 @@
+{
+  "name": "@saas/integrations",
+  "version": "1.0.0",
+  "description": "Social platform OAuth + publish providers (Instagram, Facebook/Meta, X, Pinterest, YouTube)",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no tests yet for @saas/integrations' && exit 0"
+  },
+  "license": "ISC",
+  "dependencies": {}
+}

@@ -30,7 +30,14 @@ router.post(
             workspaceId: req.user!.workspaceId,
             title: data.title,
             content: data.content,
-            status: data.status
+            status: data.status,
+            imageUrl: data.imageUrl ?? null,
+            imageStorageKey: data.imageStorageKey ?? null,
+            videoUrl: data.videoUrl ?? null,
+            videoStorageKey: data.videoStorageKey ?? null,
+            hashtags: data.hashtags ?? [],
+            platforms: data.platforms ?? [],
+            source: data.source
         });
 
         emitAudit({
@@ -38,7 +45,13 @@ router.post(
             action: AUDIT_ACTIONS.POST_CREATED,
             entity: "post",
             entityId: post._id.toString(),
-            metadata: { status: post.status }
+            metadata: {
+                status: post.status,
+                hasImage: Boolean(data.imageUrl),
+                hasVideo: Boolean(data.videoUrl),
+                platforms: data.platforms ?? [],
+                source: data.source
+            }
         });
 
         respond(res, post, 201);
@@ -124,13 +137,26 @@ router.post(
     allowRoles(EDITOR_ROLES),
     asyncHandler(async (req: AuthRequest, res) => {
         const id = String(req.params.id);
-        const post = await service.publishPost(id, req.user!.workspaceId);
+
+        // Optional `{ platforms: string[] }` body — used by the FE to
+        // re-publish only a specific subset (e.g. retrying the platforms
+        // that failed without firing duplicates to the ones that succeeded).
+        // Anything outside the post's own target list is ignored server-side.
+        const body = (req.body ?? {}) as { platforms?: unknown };
+        const platforms = Array.isArray(body.platforms)
+            ? body.platforms.filter((p): p is string => typeof p === "string")
+            : undefined;
+
+        const post = await service.publishPost(id, req.user!.workspaceId, {
+            platforms
+        });
 
         emitAudit({
             req,
             action: AUDIT_ACTIONS.POST_PUBLISHED,
             entity: "post",
-            entityId: id
+            entityId: id,
+            metadata: platforms ? { platforms } : undefined
         });
 
         respond(res, post);

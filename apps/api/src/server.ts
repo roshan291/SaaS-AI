@@ -22,6 +22,7 @@ import auditLogRoutes from "./routes/audit-log.routes";
 import healthRoutes from "./routes/health.routes";
 import metricsRoutes from "./routes/metrics.routes";
 import testRoutes from "./routes/test.routes";
+import integrationsRoutes from "./routes/integrations.routes";
 
 import { mountSwagger } from "./docs/swagger";
 import { errorHandler } from "./middlewares/error-handler";
@@ -139,6 +140,7 @@ app.use("/api/v1/jobs", jobRoutes);
 app.use("/api/v1/hashtags", hashtagRoutes);
 app.use("/api/v1/images", aiImageGenerateRoutes);
 app.use("/api/v1/audit-logs", auditLogRoutes);
+app.use("/api/v1/integrations", integrationsRoutes);
 app.use("/api/v1/test", testRoutes);
 
 // Swagger UI at /api/docs and machine-readable spec at /api/docs.json.
